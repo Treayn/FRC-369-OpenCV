@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import time
 
 class CubeVision(object):
     def __init__(self, port: int, width: int, height: int):
@@ -13,11 +14,6 @@ class CubeVision(object):
         # Center of camera is our target position.
         self.target_position = int(self.camera.get(cv2.CAP_PROP_FRAME_WIDTH)/2)
         self.height = int(self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT)/2)
-        
-        self.kernel = {
-            "outer": cv2.getStructuringElement(cv2.MORPH_RECT,(10, 10)),
-            "inner": cv2.getStructuringElement(cv2.MORPH_RECT,(100, 100))
-        }
 
         # Set bounds for color filtering.
         self.bounds = {
@@ -41,25 +37,18 @@ class CubeVision(object):
         """Filter and clean image."""
         # Convert image to HSV & filter by color.
         hsv = cv2.cvtColor(self.frame, cv2.COLOR_BGR2HSV)
-        mask = cv2.inRange(hsv, self.bounds["lower"], self.bounds["upper"])
-
-        # Filter image further by removing small black & white spots (visual noise) from the mask.
-        opening = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self.kernel["outer"])
-        closing = cv2.morphologyEx(opening, cv2.MORPH_CLOSE, self.kernel["inner"])
-
-        # Expand the mask slightly.
-        dilation = cv2.dilate(closing, self.kernel["inner"], iterations=1)
-        self.filtered_mask = dilation
+        self.mask = cv2.inRange(hsv, self.bounds["lower"], self.bounds["upper"])
 
         # Create image to display.
-        self.masked_image = cv2.bitwise_and(self.frame, self.frame, mask=self.filtered_mask)
+        self.masked_image = cv2.bitwise_and(self.frame, self.frame, mask=self.mask)
     
     def _get_contours(self) -> None:
         """Find contours, specifically the largest one"""
-        bw, contours, hierarchy = cv2.findContours(self.filtered_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        
-        # Get the largest contour and fill in evrything inside it.
-        self.largest_contour = max(contours, key=cv2.contourArea)
+        bw, contours, hierarchy = cv2.findContours(self.mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_KCOS)
+        hulls = [cv2.convexHull(contour) for contour in contours]
+
+        # Get the largest contour and fill in everything inside it.
+        self.largest_contour = max(hulls, key=cv2.contourArea)
         cv2.drawContours(self.masked_image, self.largest_contour, -1, (0, 255, 0), -1)
     
     def _get_centers(self) -> None:
@@ -103,7 +92,7 @@ class CubeVision(object):
         try:
             self._get_contours()
             self._get_centers()
-        except ValueError:
+        except (ValueError, ZeroDivisionError) as e:
             # If no contours spotted, hold the current heading/position
             self.current_position = self.target_position
         self._filter_results()
