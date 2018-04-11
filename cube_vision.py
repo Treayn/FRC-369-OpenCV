@@ -3,17 +3,10 @@ import numpy as np
 import time
 
 class CubeVision(object):
-    def __init__(self, port: int, width: int, height: int):
-        # Set camera port.
-        self.camera = cv2.VideoCapture(port)
-        
-        # Set camera resolution.
-        self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-        self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-        
+    def __init__(self, x_center: float, y_center: float):
         # Center of camera is our target position.
-        self.target_position = int(self.camera.get(cv2.CAP_PROP_FRAME_WIDTH)/2)
-        self.height = int(self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT)/2)
+        self.target_position = int(x_center)
+        self.height = int(y_center)
 
         # Set bounds for color filtering.
         self.bounds = {
@@ -24,23 +17,19 @@ class CubeVision(object):
         # List for running average, 4 indexes, each initialized to 0.
         self.samples = [0] * 4
     
-    def _capture_frame(self) -> None:
-        """Get a frame from the camera."""
-        _, self.frame = self.camera.read()
-    
-    def _overlay_target(self) -> None:
+    def _overlay_target(self, frame) -> None:
         """Add a green target circle on the GUI."""
-        cv2.circle(self.frame, (self.target_position, self.height), 7, (0, 255, 0), -1)
-        cv2.putText(self.frame, "Robot Center", (self.target_position, self.height - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        cv2.circle(frame, (self.target_position, self.height), 7, (0, 255, 0), -1)
+        cv2.putText(frame, "Robot Center", (self.target_position, self.height - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
     
-    def _threshold_image(self) -> None:
+    def _threshold_image(self, frame) -> None:
         """Filter and clean image."""
         # Convert image to HSV & filter by color.
-        hsv = cv2.cvtColor(self.frame, cv2.COLOR_BGR2HSV)
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         self.mask = cv2.inRange(hsv, self.bounds["lower"], self.bounds["upper"])
 
         # Create image to display.
-        self.masked_image = cv2.bitwise_and(self.frame, self.frame, mask=self.mask)
+        self.masked_image = cv2.bitwise_and(frame, frame, mask=self.mask)
     
     def _get_contours(self) -> None:
         """Find contours, specifically the largest one"""
@@ -51,19 +40,17 @@ class CubeVision(object):
         self.largest_contour = max(hulls, key=cv2.contourArea)
         cv2.drawContours(self.masked_image, self.largest_contour, -1, (0, 255, 0), -1)
     
-    def _get_centers(self) -> None:
+    def _get_centers(self) -> int:
         """Get the contour moments/centers"""
         M = cv2.moments(self.largest_contour)
         self.current_position = int(round(M['m10']/M['m00']))
-        print('Current position: ' + str(self.current_position))
-        print('Target position: ' + str(self.target_position))
     
-    def _overlay_actual(self) -> None:
-        cv2.circle(self.frame, (self.current_position, self.height), 7, (0, 0, 255), -1)
-        cv2.putText(self.frame, "Target Position", (self.current_position, self.height + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+    def _overlay_actual(self, frame) -> None:
+        cv2.circle(frame, (self.current_position, self.height), 7, (0, 0, 255), -1)
+        cv2.putText(frame, "Target Position", (self.current_position, self.height + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
     
-    def _display_results(self) -> None:
-        cv2.imshow('Raw', self.frame)
+    def _display_results(self, frame) -> None:
+        cv2.imshow('Raw', frame)
         cv2.imshow('Mask', self.masked_image)
         cv2.waitKey(1)
     
@@ -79,25 +66,26 @@ class CubeVision(object):
         self.dx = np.mean(self.samples)
         self.filtered_position = int(round(self.dx + self.target_position))
     
-    def _overlay_filtered(self):
-        cv2.circle(self.frame, (self.filtered_position, self.height), 7, (255, 0, 0), -1)
-        cv2.putText(self.frame, "Target Filtered", (self.filtered_position + 20, self.height), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+    def _overlay_filtered(self, frame):
+        cv2.circle(frame, (self.filtered_position, self.height), 7, (255, 0, 0), -1)
+        cv2.putText(frame, "Target Filtered", (self.filtered_position + 20, self.height), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
 
     def _get_error(self) -> int:
         return self.dx
 
-    def process(self):
-        self._capture_frame()
-        self._threshold_image()
+    def process(self, frame):
+        self._threshold_image(frame)
         try:
             self._get_contours()
             self._get_centers()
+            print('Current position: ' + str(self.current_position))
+            print('Target position: ' + str(self.target_position))
         except (ValueError, ZeroDivisionError) as e:
             # If no contours spotted, hold the current heading/position
-            self.current_position = self.target_position
+            pass
         self._filter_results()
-        self._overlay_actual()
-        self._overlay_filtered()
-        self._overlay_target()
-        self._display_results()
+        self._overlay_actual(frame)
+        self._overlay_filtered(frame)
+        self._overlay_target(frame)
+        self._display_results(frame)
         return self._get_error()
