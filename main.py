@@ -28,7 +28,7 @@ async def toggle_vision(network, camera: Vision):
         else:
             camera.enable_vision()
         
-        await asyncio.sleep(0.02)
+        await asyncio.sleep(0.05)
 
 async def update_data(network, camera: Vision):
     """Take data off queue and put onto NetworkTables."""
@@ -36,13 +36,16 @@ async def update_data(network, camera: Vision):
         if camera.is_enabled():
             network.putNumber("vision_pid", camera.get_data())
         
-        await asyncio.sleep(0.02)
+        await asyncio.sleep(0.05)
 
 if __name__ == "__main__":
+    WIDTH = 1920
+    HEIGHT = 1080
+
     loop = asyncio.get_event_loop()
 
     # Create objects
-    camera = Vision(0, 1650, 1080)
+    camera = Vision(0, WIDTH, HEIGHT)
 
     # Connect to RoboRIO (Blocking Call)
     connect("10.3.69.2")
@@ -53,6 +56,8 @@ if __name__ == "__main__":
 
     # Enable camera.
     table = NetworkTables.getTable("SmartDashboard").getSubTable("vision")
+    table.putNumber("vision_width", WIDTH)
+    table.putNumber("vision_height", HEIGHT)
     camera.enable_vision()
 
     try:
