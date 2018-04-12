@@ -14,14 +14,8 @@ class Vision(threading.Thread):
         self.mutex = threading.RLock()
 
         self.data = queue.Queue()
-        self.feed = queue.Queue()
         
-        self.vision_pipeline = {
-            "Cube": CubeVision(width/2, height/2),
-            "Tape": TapeVision(width/2, height/2)
-        }
-        
-        self.active_pipeline = None
+        self.active_pipeline = CubeVision(width/2, height/2)
     
     def __del__(self):
         self.camera.release()
@@ -47,28 +41,17 @@ class Vision(threading.Thread):
     
     def get_data(self):
         return self.data.get_nowait()
-
-    def get_feed(self):
-        return self.feed.get_nowait()
     
+    def is_enabled(self) -> bool:
+        return self.ready.is_set()
+
     def run(self):
         self.ready.wait()
         while True:
             frame = self._capture_frame()
-            _, jpeg = cv2.imencode('.jpg', frame)
-            self.feed.put(jpeg.tobytes())
-
-            if not self.active_pipeline is None:
-                pid_error = self.active_pipeline.process(frame)
-                self.data.put(pid_error)
+            pid_error = self.active_pipeline.process(frame)
+            self.data.put(pid_error)
             
             self.ready.wait()
-    
-    def set_vision_type(self, vision_type: str):
-        with self.mutex:
-            if vision_type is None:
-                self.active_pipeline = None
-            elif self.active_pipeline is self.vision_pipeline[type]:
-                self.active_pipeline = self.vision_pipeline[type]
         
     

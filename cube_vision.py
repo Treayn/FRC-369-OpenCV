@@ -87,5 +87,5 @@ class CubeVision(object):
         self._overlay_actual(frame)
         self._overlay_filtered(frame)
         self._overlay_target(frame)
-        self._display_results(frame)
+        #self._display_results(frame)
         return self._get_error()
