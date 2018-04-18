@@ -6,6 +6,7 @@ class CubeVision(object):
     def __init__(self, x_center: float, y_center: float):
         # Center of camera is our target position.
         self.target_position = int(x_center)
+        self.current_position = self.target_position
         self.height = int(y_center)
 
         # Set bounds for color filtering.
@@ -40,7 +41,7 @@ class CubeVision(object):
         self.largest_contour = max(hulls, key=cv2.contourArea)
         cv2.drawContours(self.masked_image, self.largest_contour, -1, (0, 255, 0), -1)
     
-    def _get_centers(self) -> int:
+    def _get_centers(self) -> None:
         """Get the contour moments/centers"""
         M = cv2.moments(self.largest_contour)
         self.current_position = int(round(M['m10']/M['m00']))
@@ -54,7 +55,7 @@ class CubeVision(object):
         cv2.imshow('Mask', self.masked_image)
         cv2.waitKey(1)
     
-    def _filter_results(self):
+    def _filter_results(self) -> None:
         """Camera data is very noisy & jumpy. Smooth it out using a running average."""
         # Get rid of the oldest error sample.
         del self.samples[0]
@@ -66,26 +67,29 @@ class CubeVision(object):
         self.dx = np.mean(self.samples)
         self.filtered_position = int(round(self.dx + self.target_position))
     
-    def _overlay_filtered(self, frame):
+    def _print_results(self) -> None:
+        print('Current position: ' + str(self.current_position))
+        print('Target position: ' + str(self.target_position))
+
+    def _overlay_filtered(self, frame) -> None:
         cv2.circle(frame, (self.filtered_position, self.height), 7, (255, 0, 0), -1)
         cv2.putText(frame, "Target Filtered", (self.filtered_position + 20, self.height), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
 
-    def _get_error(self) -> int:
+    def _get_error(self) -> float:
         return self.dx
 
-    def process(self, frame):
+    def process(self, frame) -> float:
         self._threshold_image(frame)
         try:
             self._get_contours()
             self._get_centers()
-            print('Current position: ' + str(self.current_position))
-            print('Target position: ' + str(self.target_position))
         except (ValueError, ZeroDivisionError) as e:
             # If no contours spotted, hold the current heading/position
             pass
         self._filter_results()
-        self._overlay_actual(frame)
-        self._overlay_filtered(frame)
-        self._overlay_target(frame)
+        self._print_results()
+        #self._overlay_actual(frame)
+        #self._overlay_filtered(frame)
+        #self._overlay_target(frame)
         #self._display_results(frame)
         return self._get_error()

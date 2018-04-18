@@ -22,19 +22,20 @@ def connect(ip: str):
         if not notified[0]:
             cond.wait()
 
-async def toggle_vision(network, camera: Vision):
-        if not network.getBoolean("vision_enabled", False) and camera.is_enabled():
+async def toggle_vision(terminated: threading.Event, network, camera: Vision):
+    while not terminated.is_set():
+        if not network.getBoolean("is_enabled", False) and camera.is_enabled():
             camera.disable_vision()
         else:
             camera.enable_vision()
         
         await asyncio.sleep(0.05)
 
-async def update_data(network, camera: Vision):
+async def update_data(terminated: threading.Event, network, camera: Vision):
     """Take data off queue and put onto NetworkTables."""
-    while True:
-        if camera.is_enabled():
-            network.putNumber("vision_pid", camera.get_data())
+    while not terminated.is_set():
+        if camera.is_enabled() and camera.has_data():
+            network.putNumber("pid_value", camera.get_data())
         
         await asyncio.sleep(0.05)
 
@@ -43,9 +44,10 @@ if __name__ == "__main__":
     HEIGHT = 1080
 
     loop = asyncio.get_event_loop()
+    terminator = threading.Event()
 
     # Create objects
-    camera = Vision(0, WIDTH, HEIGHT)
+    camera = Vision(terminator, 0, WIDTH, HEIGHT)
 
     # Connect to RoboRIO (Blocking Call)
     connect("10.3.69.2")
@@ -56,18 +58,19 @@ if __name__ == "__main__":
 
     # Enable camera.
     table = NetworkTables.getTable("SmartDashboard").getSubTable("vision")
-    table.putNumber("vision_width", WIDTH)
-    table.putNumber("vision_height", HEIGHT)
+    table.putNumber("camera_width", WIDTH)
+    table.putNumber("camera_height", HEIGHT)
     camera.enable_vision()
 
     try:
         # Schedule calls
-        loop.run_until_complete(toggle_vision(table, camera))
-        loop,run_until_complete(update_data(table, camera))
+        #loop.run_until_complete(toggle_vision(terminator, table, camera))
+        loop.run_until_complete(update_data(terminator, table, camera))
         loop.run_forever()
     except KeyboardInterrupt as err:
         # Blocking call interrupted by loop.stop()
         print("Canceling Event Loop...")
+        terminator.set()
 
     finally:
         loop.close()
